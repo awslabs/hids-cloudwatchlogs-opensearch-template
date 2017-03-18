@@ -1,4 +1,4 @@
-# Monitor EC2 Host Based Intrusion Detection Alerts with CloudWatch Logs, Lambda and Elasticsearch
+# Monitor EC2 Host Based Intrusion Detection Alerts with OSSEC, CloudWatch Logs, Lambda and Elasticsearch
 
 This solution uses [Amazon CloudWatch Logs](http://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/WhatIsCloudWatchLogs.html) to collect and aggregate alerts in near real time from an open-source security ([OSSEC](http://ossec.github.io/)) HIDS. It uses a CloudWatch Logs subscription to deliver the alerts to Amazon [Elasticsearch Service](https://aws.amazon.com/elasticsearch-service/) (Amazon ES) for analysis and visualization with [Kibana](https://en.wikipedia.org/wiki/Kibana).
 
