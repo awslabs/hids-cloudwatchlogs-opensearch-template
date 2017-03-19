@@ -19,7 +19,7 @@ If you already have a VPC Subnet configured with internet access, you can launch
 
 [launch-stack]:https://console.aws.amazon.com/cloudformation/home?#/stacks/new?stackName=HIDS-Alerts-ES-Test-Stack&templateURL=
 
-[![Launch Stack](https://github.com/awslabs/hids-cloudwatchlogs-elasticsearch-template/blob/master/images/launch-stack-png)][launch-stack]
+[![Launch Stack](https://github.com/awslabs/hids-cloudwatchlogs-elasticsearch-template/blob/master/images/launch-stack.png)][launch-stack]
 
 ### How the Solution Works
 1.	On the target EC2 instances, the OSSEC HIDS generates alerts that the CloudWatch Logs agent captures. The HIDS performs log analysis, integrity checking, Windows registry monitoring, rootkit detection, realtime alerting, and active response. For more information, see [Getting started with OSSEC](http://ossec.github.io/docs/manual/non-technical-overview.html).
