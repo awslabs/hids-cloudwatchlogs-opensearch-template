@@ -20,6 +20,7 @@ Here is how the solution works:
 5.	Kibana visualizes the alerts in near real time. Kibana is a popular open-source visualization tool designed to work with Amazon ES, which provides a default installation of Kibana with every Amazon ES domain.
 
 
+Thanks to the [OSSEC Project Team](http://ossec.github.io/about.html#ossec-team) for authoring the OSSEC HIDS.
 
 # License
 [https://aws.amazon.com/asl/](https://aws.amazon.com/asl/)
