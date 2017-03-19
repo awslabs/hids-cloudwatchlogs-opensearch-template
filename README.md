@@ -15,9 +15,11 @@ This solution contains a test environment AWS CloudFormation stack that you can 
 
 Note that this solution depends on Amazon ES and Lambda that, at the time of this writing, are available in the following regions: US East (N. Virginia), US East (Ohio), US West (Oregon), US West (N. California), EU (Ireland), EU (Frankfurt), Asia Pacific (Singapore), Asia Pacific (Tokyo), Asia Pacific (Sydney), and Asia Pacific (Seoul).
 
-If you already have a VPC Subnet configured with internet access, you can launch the stack and get started:
+If you already have a VPC Subnet configured with internet access, you can launch the stack:
 
-[![launchstack](https://github.com/awslabs/hids-cloudwatchlogs-elasticsearch-template/blob/master/images/launch-stack-png)](https://console.aws.amazon.com/cloudformation/home?#/stacks/new?stackName=HIDS-Alerts-ES-Test-Stack&templateURL=)
+[launch-stack]:https://console.aws.amazon.com/cloudformation/home?#/stacks/new?stackName=HIDS-Alerts-ES-Test-Stack&templateURL=
+
+[![Launch Stack](https://github.com/awslabs/hids-cloudwatchlogs-elasticsearch-template/blob/master/images/launch-stack-png)][launch-stack]
 
 ### How the Solution Works
 1.	On the target EC2 instances, the OSSEC HIDS generates alerts that the CloudWatch Logs agent captures. The HIDS performs log analysis, integrity checking, Windows registry monitoring, rootkit detection, realtime alerting, and active response. For more information, see [Getting started with OSSEC](http://ossec.github.io/docs/manual/non-technical-overview.html).
