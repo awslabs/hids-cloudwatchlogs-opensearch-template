@@ -17,7 +17,7 @@ Note that this solution depends on Amazon ES and Lambda that, at the time of thi
 
 If you already have a VPC Subnet configured with internet access, you can launch the stack:
 
-[launch-stack]:https://console.aws.amazon.com/cloudformation/home?#/stacks/new?stackName=HIDS-Alerts-ES-Test-Stack&templateURL=
+[launch-stack]:https://console.aws.amazon.com/cloudformation/home?#/stacks/new?stackName=HIDS-Alerts-ES-Test-Stack&templateURL=https://s3.amazonaws.com/hids-cwl-es-artifacts/hids-cwl-es.template
 
 [![Launch Stack](https://github.com/awslabs/hids-cloudwatchlogs-elasticsearch-template/blob/master/images/launch-stack.png)][launch-stack]
 
