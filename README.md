@@ -27,7 +27,7 @@ In order for the Lambda function to be deployed, you will need to stage the bund
 
 You also must provide a trusted source IP address or CIDR block for access to the environment following the creation of the stack and an EC2 key pair to associate with the instances. You can find information about creating an EC2 key pair in the documentation here. Note that the trusted IP address or CIDR block also is used to create the Amazon ES access policy automatically for Kibana access. It is recommended that you utilize a specific IP address or CIDR range rather than using 0.0.0.0/0 which will allow all IPv4 addresses to access your instances.
 
-#### CloudFormation Parameters
+### CloudFormation Parameters
 ![cf-params](https://github.com/awslabs/hids-cloudwatchlogs-elasticsearch-template/blob/master/images/cf-params.png)
 
 1.	HIDSInstanceSize:
