@@ -1,5 +1,7 @@
 # Monitor EC2 Host Based Intrusion Detection Alerts with OSSEC, CloudWatch Logs, Lambda and Elasticsearch
 
+![dashboard](https://github.com/awslabs/hids-cloudwatchlogs-elasticsearch-template/blob/master/images/hids-dashboard.png)
+
 ### Solution Overview
 This solution uses [Amazon CloudWatch Logs](http://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/WhatIsCloudWatchLogs.html) to collect and aggregate alerts in near real time from an open-source security ([OSSEC](http://ossec.github.io/)) HIDS. It uses a [CloudWatch Logs Subscription](http://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/Subscriptions.html) to deliver the alerts to Amazon [Elasticsearch Service](https://aws.amazon.com/elasticsearch-service/) (Amazon ES) for analysis and visualization with [Kibana](https://en.wikipedia.org/wiki/Kibana).
 
@@ -55,8 +57,6 @@ If you already have a VPC Subnet configured with internet access, you can launch
 [launch-stack]:https://console.aws.amazon.com/cloudformation/home?#/stacks/new?stackName=HIDS-Alerts-ES-Test-Stack&templateURL=https://s3.amazonaws.com/hids-cwl-es-artifacts/hids-cwl-es.template
 
 [![Launch Stack](https://github.com/awslabs/hids-cloudwatchlogs-elasticsearch-template/blob/master/images/launch-stack.png)][launch-stack]
-
-![dashboard](https://github.com/awslabs/hids-cloudwatchlogs-elasticsearch-template/blob/master/images/hids-dashboard.png)
 
 ### Thanks
 Thanks to the [OSSEC Project Team](http://ossec.github.io/about.html#ossec-team) for authoring the OSSEC HIDS.
