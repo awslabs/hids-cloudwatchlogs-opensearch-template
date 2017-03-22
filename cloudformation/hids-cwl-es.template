@@ -46,10 +46,10 @@ Parameters:
       - "m3.xlarge.elasticsearch"
       - "m3.2xlarge.elasticsearch"
   MyS3Bucket:
-    Description: An S3 Bucket containing the Lambda zipped bundle. Must be in the region where the stack is launched.
+    Description: An S3 Bucket containing the Lambda zipped deployment package. Must be in the region where the stack is launched.
     Type: String
   MyS3Key:
-    Description: The path to zipped bundle within the bucket. Must be in the region where the stack is launched.
+    Description: The path to zipped deployment package within the bucket. Must be in the region where the stack is launched.
     Type: String
     Default: "hids-lambda-consumer.zip"
   MyKeyName:
