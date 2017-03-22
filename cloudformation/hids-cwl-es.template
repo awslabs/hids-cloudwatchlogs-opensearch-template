@@ -103,9 +103,9 @@ Metadata:
       ESInstanceSize:
         default: Elasticsearch instance size
       MyS3Bucket:
-        default: In region S3 bucket with zipped bundle
+        default: In region S3 bucket with zipped deployment package
       MyS3Key:
-        default: In region S3 key for zipped bundle
+        default: In region S3 key for zipped deployment package
       MyKeyName:
         default: SSH Key Pair
       MyTrustedNetwork:
