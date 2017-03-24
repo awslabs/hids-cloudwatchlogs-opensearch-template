@@ -36,7 +36,7 @@ You also must provide a trusted source IP address or CIDR block for access to th
 EC2 instance size for test server
 2.	ESInstanceSize:
 Elasticsearch instance size
-3.	MyKeyName:
+3.	MyKeyPair:
 A public/private key pair that allows you to connect securely to your instance after it launches
 4.  MyS3Bucket:
 In region S3 bucket with Lambda zipped deployment package

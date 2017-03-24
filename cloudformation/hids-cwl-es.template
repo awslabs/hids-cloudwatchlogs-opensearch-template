@@ -52,7 +52,7 @@ Parameters:
     Description: The path to zipped deployment package within the bucket. Must be in the region where the stack is launched.
     Type: String
     Default: "hids-lambda-consumer.zip"
-  MyKeyName:
+  MyKeyPair:
     Default: ''
     Description: Public/private key pair, which allows you to connect securely toyour instance after it launches.
     Type: AWS::EC2::KeyPair::KeyName
@@ -83,13 +83,13 @@ Metadata:
       Parameters:
       - HIDSInstanceSize
       - ESInstanceSize
-      - MyKeyName
+      - MyKeyPair
     - Label:
         default: S3 Configuration
       Parameters:
       - MyS3Bucket
       - MyS3Key
-      - MyKeyName
+      - MyKeyPair
     - Label:
         default: Network Configuration
       Parameters:
@@ -106,7 +106,7 @@ Metadata:
         default: In region S3 bucket with zipped Lambda deployment package
       MyS3Key:
         default: In region S3 key for zipped Lambda deployment package
-      MyKeyName:
+      MyKeyPair:
         default: SSH Key Pair
       MyTrustedNetwork:
         default: Trusted Network CIDR
@@ -284,7 +284,7 @@ Resources:
       IamInstanceProfile:
         Ref: HIDSInstanceProfile
       KeyName:
-        Ref: MyKeyName
+        Ref: MyKeyPair
       NetworkInterfaces:
         - AssociatePublicIpAddress:
             !If [AssignPubIp, true, false]
@@ -419,7 +419,7 @@ Resources:
       IamInstanceProfile:
         Ref: HIDSInstanceProfile
       KeyName:
-        Ref: MyKeyName
+        Ref: MyKeyPair
       NetworkInterfaces:
         - AssociatePublicIpAddress:
             !If [AssignPubIp, true, false]
