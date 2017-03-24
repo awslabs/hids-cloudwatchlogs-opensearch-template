@@ -25,7 +25,7 @@ This solution contains a test environment AWS CloudFormation stack that you can 
 Note that this solution depends on Amazon ES and Lambda that, at the time of this writing, are available in the following regions: US East (N. Virginia), US East (Ohio), US West (Oregon), US West (N. California), EU (Ireland), EU (Frankfurt), Asia Pacific (Singapore), Asia Pacific (Tokyo), Asia Pacific (Sydney), and Asia Pacific (Seoul).
 
 For the following input parameters, you must identify a target VPC and subnet (which requires Internet access) for deployment. If the target subnet uses an Internet gateway, set the AssignPublicIP parameter to true. If the target subnet uses a NAT gateway, you can leave the default setting of AssignPublicIP as false.
-In order for the Lambda function to be deployed, you will need to stage the bundle in an S3 bucket located in the region you are deploying into. To do this, you will download the zipped bundle and upload it to your in-region bucket. The bundle can be [downloaded here](https://github.com/awslabs/hids-cloudwatchlogs-elasticsearch-template/raw/master/lambda-consumer/hids-lambda-consumer.zip). For additional information about uploading objects to S3, please reference [Uploading Object into Amazon S3 in our documentation](http://docs.aws.amazon.com/AmazonS3/latest/UG/UploadingObjectsintoAmazonS3.html).
+In order for the Lambda function to be deployed, you will need to stage the Lambda deployment package in an S3 bucket located in the region you are deploying into. To do this, you will download the zipped deployment package and upload it to your in-region bucket. The Lambda zipped deployment package can be [downloaded here](https://github.com/awslabs/hids-cloudwatchlogs-elasticsearch-template/raw/master/lambda-consumer/deployment-package/hids-lambda-consumer.zip). For additional information about uploading objects to S3, please reference [Uploading Object into Amazon S3 in our documentation](http://docs.aws.amazon.com/AmazonS3/latest/UG/UploadingObjectsintoAmazonS3.html).
 
 You also must provide a trusted source IP address or CIDR block for access to the environment following the creation of the stack and an EC2 key pair to associate with the instances. You can find information about creating an EC2 key pair in the documentation here. Note that the trusted IP address or CIDR block also is used to create the Amazon ES access policy automatically for Kibana access. It is recommended that you utilize a specific IP address or CIDR range rather than using 0.0.0.0/0 which will allow all IPv4 addresses to access your instances.
 
@@ -37,9 +37,9 @@ EC2 instance size for test server
 2.	ESInstanceSize:
 Elasticsearch instance size
 3.	MyS3Bucket:
-In region S3 bucket with zipped bundle
+In region S3 bucket with Lambda zipped deployment package
 4.	MyS3Key:
-In region S3 key for zipped bundle
+In region S3 key for Lambda zipped deployment package
 5.	MyKeyName:
 A public/private key pair that allows you to connect securely to your instance after it launches
 6.	VPCId:
