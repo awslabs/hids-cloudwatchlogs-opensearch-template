@@ -36,10 +36,10 @@ You also must provide a trusted source IP address or CIDR block for access to th
 EC2 instance size for test server
 2.	ESInstanceSize:
 Elasticsearch instance size
-3.	MyS3Bucket:
-In region S3 bucket with Lambda zipped deployment package
-4.	MyS3Key:
+3. MyS3Key:
 In region S3 key for Lambda zipped deployment package
+4.	MyS3Bucket:
+In region S3 bucket with Lambda zipped deployment package	
 5.	MyKeyName:
 A public/private key pair that allows you to connect securely to your instance after it launches
 6.	VPCId:
