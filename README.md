@@ -54,7 +54,7 @@ Your trusted source IP or CIDR block that is used to whitelist access to the EC2
 
 If you already have a VPC Subnet configured with internet access, you can launch the stack:
 
-[launch-stack]:https://console.aws.amazon.com/cloudformation/home?#/stacks/new?stackName=HIDS-Alerts-ES-Test-Stack&templateURL=https://s3.amazonaws.com/hids-cwl-es-artifacts/hids-cwl-es.template
+[launch-stack]:https://console.aws.amazon.com/cloudformation/home?#/stacks/new?stackName=HIDS-Alerts-ES-Test-Stack&templateURL=https://s3.amazonaws.com/awsiammedia/public/sample/HIDSAlerts/hids-cwl-es.template
 
 [![Launch Stack](https://github.com/awslabs/hids-cloudwatchlogs-elasticsearch-template/blob/master/images/launch-stack.png)][launch-stack]
 
