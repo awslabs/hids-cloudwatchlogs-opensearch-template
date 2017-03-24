@@ -1,4 +1,4 @@
-# Monitor EC2 Host Based Intrusion Detection Alerts with OSSEC, CloudWatch Logs, Lambda and Elasticsearch
+# Monitor Host-Based Intrusion Detection System Alerts on Amazon EC2 Instances
 
 ![dashboard](https://github.com/awslabs/hids-cloudwatchlogs-elasticsearch-template/blob/master/images/hids-dashboard.png)
 
