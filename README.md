@@ -2,6 +2,8 @@
 
 ![dashboard](https://github.com/awslabs/hids-cloudwatchlogs-elasticsearch-template/blob/master/images/hids-dashboard.png)
 
+The [full post for this solution](https://aws.amazon.com/blogs/security/how-to-monitor-host-based-intrusion-detection-system-alerts-on-amazon-ec2-instances/) is available on the AWS Security Blog.
+
 ### Solution Overview
 This solution uses [Amazon CloudWatch Logs](http://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/WhatIsCloudWatchLogs.html) to collect and aggregate alerts in near real time from an open-source security ([OSSEC](http://ossec.github.io/)) HIDS. It uses a [CloudWatch Logs Subscription](http://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/Subscriptions.html) to deliver the alerts to Amazon [Elasticsearch Service](https://aws.amazon.com/elasticsearch-service/) (Amazon ES) for analysis and visualization with [Kibana](https://en.wikipedia.org/wiki/Kibana).
 
