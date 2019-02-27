@@ -494,7 +494,7 @@ Resources:
               Fn::GetAtt:
                 - "HIDSLambdaRole"
                 - "Arn"
-            Runtime : "nodejs4.3"
+            Runtime : "nodejs8.10"
             Environment:
               Variables:
                 ES_ENDPOINT: !GetAtt HIDSESDomain.DomainEndpoint
