@@ -1,21 +1,29 @@
 /*
  * Copyright 2017 Amazon.com, Inc. or its affiliates. All Rights Reserved.
  *
- * SPDX-License-Identifier: Apache-2.0
+ * Licensed under the Amazon Software License (the "License").
+ * You may not use this file except in compliance with the License.
+ * A copy of the License is located at
+ *
+ * http://aws.amazon.com/asl/
+ *
+ * or in the "license" file accompanying this file. This file is distributed
+ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
+ * express or implied. See the License for the specific language governing
+ * permissions and limitations under the License.
  */
 
-// v1.1.2
+// v1.1.3
 
 var https = require('https');
 var zlib = require('zlib');
 var crypto = require('crypto');
-var AWS = require('aws-sdk');
 
 var endpoint = process.env.ES_ENDPOINT;
 
 exports.handler = function(input, context) {
     // decode input from base64
-    var zippedInput = new Buffer(input.awslogs.data, 'base64');
+    var zippedInput = new Buffer.from(input.awslogs.data, 'base64');
 
     // decompress the input
     zlib.gunzip(zippedInput, function(error, buffer) {
@@ -84,7 +92,7 @@ function transform(payload) {
 
         var action = { "index": {} };
         action.index._index = indexName;
-        action.index._type = payload.logGroup;
+        // action.index._type = payload.logGroup; // deprecated
         action.index._id = logEvent.id;
 
         bulkRequestBody += [
@@ -108,7 +116,7 @@ function buildSource(message, extractedFields) {
                     continue;
                 }
 
-                var jsonSubString = extractJson(value);
+                jsonSubString = extractJson(value);
                 if (jsonSubString !== null) {
                     source['$' + key] = JSON.parse(jsonSubString);
                 }

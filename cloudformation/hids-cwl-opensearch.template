@@ -1,0 +1,904 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: HIDS CloudWatch Logs OpenSearch Stack,**WARNING** This template creates 2 EC2 instances, a CloudWatch Logs Group, AWS Lambda function, and an OpenSearch Domain. You will be billed for the AWS resources used if you create a stack from this template. Licensed under the Apache License, 2.0.
+
+Parameters:
+  HIDSInstanceSize:
+    Default: "t3.micro"
+    Description: Instance size for OSSEC Test Instances.
+    Type: String
+    AllowedValues:
+      - "t3.micro"
+      - "t3.small"
+      - "t3.medium"
+  OpenSearchInstanceSize:
+    Default: "t3.small.search"
+    Description: Instance size for OpenSearch Instance.
+    Type: String
+    AllowedValues:
+      - "t3.small.search"
+      - "t3.medium.search"
+      - "m5.large.search"
+      - "m5.xlarge.search"
+      - "m5.2xlarge.search"
+  MyTrustedNetwork:
+    Description: Only connections from this network are allowed to your OpenSearch Domain or EC2 instances. Enter an IP or CIDR E.g. 1.1.1.1/24 or 10.10.10.10/32
+    Type: String
+  VPCId:
+    Description: Please provide a VPC to deploy the solution into.
+    Type: AWS::EC2::VPC::Id
+  SubnetId:
+    Description: Please provide a subnet id with outbound connectivity within the VPC you selected above.
+    Type: AWS::EC2::Subnet::Id
+  AssignPublicIP:
+    Description: Assign a public IP to the EC2 instances? Set to true if you connect out through an Internet Gateway or leave as false if you connect through a NAT Gateway.
+    Default: false
+    Type: String
+    AllowedValues:
+      - true
+      - false
+Conditions:
+  AssignPubIp:
+    !Equals [ !Ref AssignPublicIP, true ]
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+    - Label:
+        default: Instance Configuration
+      Parameters:
+      - HIDSInstanceSize
+      - ESInstanceSize
+    - Label:
+        default: Network Configuration
+      Parameters:
+      - VPCId
+      - SubnetId
+      - AssignPublicIP
+      - MyTrustedNetwork
+    ParameterLabels:
+      HIDSInstanceSize:
+        default: EC2 instance size for test server
+      OpenSearchInstanceSize:
+        default: OpenSearch instance size
+      MyTrustedNetwork:
+        default: Trusted Network CIDR
+      VPCId:
+        default: Target VPC for solution
+      Subnet:
+        default: Subnet to launch instance into
+      AssignPublicIP:
+        default: Assign Public IP for EC2
+Resources:
+
+# AMIInfoFunction - Look up an AMI based on a NameFilter
+#
+# This AWS Lambda function is used to look up an Amazon EC2 AMI based
+# on a name filter. An example of a name filter would be:
+#
+# amzn2-ami-hvm\*ebs
+#
+# After looking up the names of all images that satify the filter,
+# they are sorted in reverse by date/time stamp and the first AMI
+# ID (which corresponds to the newest AMI) is returned.
+#
+# Using a Lambda function makes it possible to look up the AMI
+# dynamically.  THe alternative would be to create a static map.
+
+  AMIInfoFunction:
+    Type: AWS::Lambda::Function
+    Properties: 
+      Description: "Look up an AMI based on a filter"
+      Handler: index.handler
+      MemorySize: 128
+      Role: !GetAtt AMILambdaExecutionRole.Arn
+      Runtime: python3.11
+      Timeout: 30
+      Code:
+        ZipFile: !Sub |
+          import json
+          import boto3
+          import cfnresponse
+          def handler(event, context):
+            if event['RequestType'] == 'Delete':
+              responseData = {}      
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+              return
+            
+            ec2=boto3.client('ec2')
+            imageDescriptions=ec2.describe_images(
+              Owners=['amazon'],
+              Filters=[
+                {'Name': 'name', 'Values': [event['ResourceProperties']['NameFilter']]}, 
+                {'Name': 'architecture', 'Values': ['x86_64']}
+              ],
+            )
+            
+            numImageDescriptions = len(imageDescriptions['Images'])
+            if numImageDescriptions < 2:
+              responseData = {}
+              cfnresponse.send(event, context, cfnresponse.FAILED, responseData)
+            else:
+              amiNames = sorted(imageDescriptions['Images'],
+                key=lambda x: x['CreationDate'],
+                reverse=True)
+              responseData = {}
+              responseData['Id'] = amiNames[0]['ImageId']
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+            return
+
+# AMIInfo - The AWS Lambda-backed resource for looking up an Amazon EC2 AMI
+#
+# Parameters
+#
+# ServiceToken - a pointer to the AWS Lambda function
+# NameFilter - the name filter to pass to the describe_images API
+
+  AMIInfo:
+    Type: Custom::AMIInfo
+    Properties:
+      ServiceToken: !GetAtt AMIInfoFunction.Arn
+      NameFilter: 'amzn2-ami-hvm*gp2'
+
+  AMILambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: root
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            Resource: arn:aws:logs:*:*:*
+          - Effect: Allow
+            Action:
+            - ec2:DescribeImages
+            Resource: "*"
+
+  HIDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Incoming Traffic Group
+      SecurityGroupIngress:
+      - CidrIp:
+          Ref: MyTrustedNetwork
+        FromPort: '22'
+        IpProtocol: tcp
+        ToPort: '22'
+      - CidrIp:
+          Ref: MyTrustedNetwork
+        FromPort: '80'
+        IpProtocol: tcp
+        ToPort: '80'
+      VpcId:
+        Ref: VPCId
+      Tags:
+      - Key: Name
+        Value: hids-security-group
+  HIDSInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Action:
+          - sts:AssumeRole
+          Effect: Allow
+          Principal:
+            Service:
+            - ec2.amazonaws.com
+            - ssm.amazonaws.com
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+  HIDSInstancePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: "hids_ec2_cwl_policy"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: "Allow"
+            Action:
+              - "logs:CreateLogGroup"
+              - "logs:CreateLogStream"
+              - "logs:PutLogEvents"
+              - "logs:DescribeLogStreams"
+            Resource: "arn:aws:logs:*:*:*"
+      Roles:
+        -
+          Ref: "HIDSInstanceRole"
+  HIDSInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+      - Ref: HIDSInstanceRole
+  HIDSLinuxHost01:
+    Type: AWS::EC2::Instance
+    Metadata:
+      AWS::CloudFormation::Init:
+        configSets:
+          HIDS_Install:
+          - configure_hids
+          - install_hids
+          - start_hids
+        configure_hids:
+          files:
+            /tmp/preloaded-vars.conf :
+              content: !Sub |
+                USER_LANGUAGE="en";
+                USER_NO_STOP="y";
+                USER_INSTALL_TYPE="local";
+                USER_DIR="/var/ossec";
+                USER_ENABLE_SYSCHECK="y";
+                USER_ENABLE_ROOTCHECK="y";
+                USER_UPDATE_RULES="y";
+                USER_ENABLE_EMAIL="n";
+                USER_ENABLE_FIREWALL_RESPONSE="n";
+                USER_ENABLE_ACTIVE_RESPONSE="n";
+              mode: "000644"
+              owner: "root"
+              group: "root"
+            /etc/awslogs/awslogs.conf :
+              content: !Sub |
+                [general]
+                state_file = /var/lib/awslogs/agent-stat
+                [/var/ossec/logs/alerts/alerts.json]
+                file = /var/ossec/logs/alerts/alerts.json
+                buffer_duration = 5000
+                log_stream_name = {instance_id}
+                initial_position = start_of_file
+              mode: "000644"
+              owner: "root"
+              group: "root"
+            /tmp/genalerts.sh :
+              content: !Sub |
+                #/bin/bash
+                sleep $[ ( $RANDOM % 20 )  + 1 ]s && curl localhost/readme.txt?
+                sleep $[ ( $RANDOM % 10 )  + 1 ]s && sudo su -c whoami apache
+                sleep $[ ( $RANDOM % 50 )  + 1 ]s && sudo -u ec2-user cat /etc/shadow
+                sleep $[ ( $RANDOM % 10 )  + 1 ]s && sudo yum install -y htop
+                sleep $[ ( $RANDOM % 80 )  + 1 ]s && ssh admin@localhost echo '`whoami`'
+                sleep $[ ( $RANDOM % 10 )  + 1 ]s && curl localhost/~
+                sleep $[ ( $RANDOM % 10 )  + 1 ]s && telnet localhost 22 < /tmp
+                sleep $[ ( $RANDOM % 30 )  + 1 ]s && curl localhost/readme.txt?
+                sleep $[ ( $RANDOM % 18 )  + 1 ]s && sudo su -c whoami bob
+                sleep $[ ( $RANDOM % 20 )  + 1 ]s && sudo yum remove -y htop*
+                sleep $[ ( $RANDOM % 25 )  + 1 ]s && curl localhost
+                sleep $[ ( $RANDOM % 45 )  + 1 ]s && ssh admin@localhost echo '`whoami`'
+                sleep $[ ( $RANDOM % 30 )  + 1 ]s && sudo cat /etc/passwd
+                sleep $[ ( $RANDOM % 15 )  + 1 ]s && telnet localhost 22 < /tmp
+              mode: "000644"
+              owner: "root"
+              group: "root"
+          commands:
+            download:
+              cwd: /tmp
+              env:
+                ossec_version: "3.7.0"
+              command: "(wget https://github.com/ossec/ossec-hids/archive/${ossec_version}.tar.gz && 
+                 wget https://github.com/ossec/ossec-hids/releases/download/${ossec_version}/ossec-hids-${ossec_version}.tar.gz.asc &&
+                 wget https://ossec.github.io/files/OSSEC-ARCHIVE-KEY.asc && gpg --import OSSEC-ARCHIVE-KEY.asc)"
+            verify:
+              cwd: /tmp
+              env:
+                ossec_version: "3.7.0"
+                ossec_keyid: "2D8387B7"
+              command: "(if gpg --with-colons --keyid-format long OSSEC-ARCHIVE-KEY.asc |& grep -qs ${ossec_keyid}; 
+                then mv ${ossec_version}.tar.gz ossec-hids-${ossec_version}.tar.gz;
+                else echo \"Error... missing expected keyid string.\"; fi &&
+                 if gpg --with-colons --verify ossec-hids-${ossec_version}.tar.gz.asc ossec-hids-${ossec_version}.tar.gz |& grep -qs 'Good signature';
+                then echo \"Found signature string.\" && tar xfz ossec-hids-${ossec_version}.tar.gz;
+                else echo \"Error... missing signature string.\" &&
+                 rm -f ossec-hids-${ossec_version}.tar.gz; fi)"
+        install_hids:
+          commands:
+            install:
+              cwd: /tmp
+              env:
+                ossec_version: "3.7.0"
+              command: "(cp /tmp/preloaded-vars.conf /tmp/ossec-hids-${ossec_version}/etc/ && cd /tmp/ossec-hids-${ossec_version} && ./install.sh)"
+        start_hids:
+          commands:
+            start1:
+              env:
+                aws_region: !Ref AWS::Region
+              command:
+                "sed -i '/<global>/a \\    \\<jsonout_output>yes<\\/jsonout_output>' /var/ossec/etc/ossec.conf; sed -i \"/region/c region=${aws_region}\" /etc/awslogs/awscli.conf"
+            start2:
+              command:
+                "sed -i '/Files to monitor/a <localfile>\\n \\    \\<log_format>apache<\\/log_format>\\n \\    \\<location>\\/var\\/log\\/httpd\\/access_log<\\/location>\\n<\\/localfile>' /var/ossec/etc/ossec.conf"
+            start3:
+              waitAfterCompletion: 15
+              env:
+                log_group: !Ref HIDSAlerts
+              command:
+                "/var/ossec/bin/ossec-control start; sed -i \"/alerts.json]/a log_group_name=${log_group}\" /etc/awslogs/awslogs.conf"
+            start4:
+              command:
+                "systemctl enable awslogsd.service && systemctl start awslogsd; chkconfig httpd on && service httpd start"
+            start5:
+              command:
+                "echo '*/7 * * * * root sh /tmp/genalerts.sh' >> \\/etc\\/crontab; crontab /etc/crontab"
+    Properties:
+      ImageId:
+        !GetAtt AMIInfo.Id
+      InstanceType:
+        Ref: HIDSInstanceSize
+      IamInstanceProfile:
+        Ref: HIDSInstanceProfile
+      NetworkInterfaces:
+        - AssociatePublicIpAddress:
+            !If [AssignPubIp, true, false]
+          DeviceIndex: "0"
+          GroupSet:
+            - Ref: HIDSSecurityGroup
+          SubnetId:
+            Ref: SubnetId
+      Tags:
+      - Key: Name
+        Value: hids-linux-test-host01
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -xe
+          yum update -y
+          yum install -yq gcc make awslogs httpd telnet pcre2-devel zlib-devel openssl-devel libevent-devel systemd-devel.x86_64
+          /usr/bin/aws configure set region ${AWS::Region}
+          /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource HIDSLinuxHost01 --configsets HIDS_Install --region ${AWS::Region}
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource HIDSLinuxHost01 --region ${AWS::Region}
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT10M
+  HIDSLinuxHost02:
+    Type: AWS::EC2::Instance
+    Metadata:
+      AWS::CloudFormation::Init:
+        configSets:
+          HIDS_Install:
+            - configure_hids
+            - install_hids
+            - start_hids
+        configure_hids:
+          files:
+            /tmp/preloaded-vars.conf :
+              content: !Sub |
+                USER_LANGUAGE="en";
+                USER_NO_STOP="y";
+                USER_INSTALL_TYPE="local";
+                USER_DIR="/var/ossec";
+                USER_ENABLE_SYSCHECK="y";
+                USER_ENABLE_ROOTCHECK="y";
+                USER_UPDATE_RULES="y";
+                USER_ENABLE_EMAIL="n";
+                USER_ENABLE_FIREWALL_RESPONSE="n";
+                USER_ENABLE_ACTIVE_RESPONSE="n";
+              mode: "000644"
+              owner: "root"
+              group: "root"
+            /etc/awslogs/awslogs.conf :
+              content: !Sub |
+                [general]
+                state_file = /var/lib/awslogs/agent-stat
+                [/var/ossec/logs/alerts/alerts.json]
+                file = /var/ossec/logs/alerts/alerts.json
+                buffer_duration = 5000
+                log_stream_name = {instance_id}
+                initial_position = start_of_file
+              mode: "000644"
+              owner: "root"
+              group: "root"
+            /tmp/genalerts.sh :
+              content: !Sub |
+                #/bin/bash
+                sleep $[ ( $RANDOM % 20 )  + 1 ]s && curl localhost/readme.txt?
+                sleep $[ ( $RANDOM % 10 )  + 1 ]s && sudo su -c whoami apache
+                sleep $[ ( $RANDOM % 50 )  + 1 ]s && sudo -u ec2-user cat /etc/shadow
+                sleep $[ ( $RANDOM % 10 )  + 1 ]s && sudo yum install -y htop
+                sleep $[ ( $RANDOM % 80 )  + 1 ]s && ssh admin@localhost echo '`whoami`'
+                sleep $[ ( $RANDOM % 10 )  + 1 ]s && curl localhost/~
+                sleep $[ ( $RANDOM % 10 )  + 1 ]s && telnet localhost 22 < /tmp
+                sleep $[ ( $RANDOM % 30 )  + 1 ]s && curl localhost/readme.txt?
+                sleep $[ ( $RANDOM % 18 )  + 1 ]s && sudo su -c whoami bob
+                sleep $[ ( $RANDOM % 20 )  + 1 ]s && sudo yum remove -y htop*
+                sleep $[ ( $RANDOM % 25 )  + 1 ]s && curl localhost
+                sleep $[ ( $RANDOM % 45 )  + 1 ]s && ssh admin@localhost echo '`whoami`'
+                sleep $[ ( $RANDOM % 30 )  + 1 ]s && sudo cat /etc/passwd
+                sleep $[ ( $RANDOM % 15 )  + 1 ]s && telnet localhost 22 < /tmp
+              mode: "000644"
+              owner: "root"
+              group: "root"
+          commands:
+            download:
+              cwd: /tmp
+              env:
+                ossec_version: "3.7.0"
+              command: "(wget https://github.com/ossec/ossec-hids/archive/${ossec_version}.tar.gz && 
+                 wget https://github.com/ossec/ossec-hids/releases/download/${ossec_version}/ossec-hids-${ossec_version}.tar.gz.asc &&
+                 wget https://ossec.github.io/files/OSSEC-ARCHIVE-KEY.asc && gpg --import OSSEC-ARCHIVE-KEY.asc)"
+            verify:
+              cwd: /tmp
+              env:
+                ossec_version: "3.7.0"
+                ossec_keyid: "2D8387B7"
+              command: "(if gpg --with-colons --keyid-format long OSSEC-ARCHIVE-KEY.asc | grep -qs ${ossec_keyid}; 
+                then mv ${ossec_version}.tar.gz ossec-hids-${ossec_version}.tar.gz;
+                else echo \"Error... missing expected keyid string.\"; fi &&
+                 if gpg --with-colons --verify ossec-hids-${ossec_version}.tar.gz.asc ossec-hids-${ossec_version}.tar.gz |& grep -qs 'Good signature'; 
+                then echo \"Found signature string.\" && tar xfz ossec-hids-${ossec_version}.tar.gz; 
+                else echo \"Error... missing signature string.\" &&
+                 rm -f ossec-hids-${ossec_version}.tar.gz; fi)"
+        install_hids:
+          commands:
+            install:
+              cwd: /tmp
+              env:
+                ossec_version: "3.7.0"
+              command: "(cp /tmp/preloaded-vars.conf /tmp/ossec-hids-${ossec_version}/etc/ && cd /tmp/ossec-hids-${ossec_version} && ./install.sh)"
+        start_hids:
+          commands:
+            start1:
+              env:
+                aws_region: !Ref AWS::Region
+              command:
+                "sed -i '/<global>/a \\    \\<jsonout_output>yes<\\/jsonout_output>' /var/ossec/etc/ossec.conf; sed -i \"/region/c region=${aws_region}\" /etc/awslogs/awscli.conf"
+            start2:
+              command:
+                "sed -i '/Files to monitor/a <localfile>\\n \\    \\<log_format>apache<\\/log_format>\\n \\    \\<location>\\/var\\/log\\/httpd\\/access_log<\\/location>\\n<\\/localfile>' /var/ossec/etc/ossec.conf"
+            start3:
+              waitAfterCompletion: 15
+              env:
+                log_group: !Ref HIDSAlerts
+              command:
+                "/var/ossec/bin/ossec-control start; sed -i \"/alerts.json]/a log_group_name=${log_group}\" /etc/awslogs/awslogs.conf"
+            start4:
+              command:
+                "systemctl enable awslogsd.service && systemctl start awslogsd; chkconfig httpd on && service httpd start"
+            start5:
+              command:
+                "echo '*/8 * * * * root sh /tmp/genalerts.sh' >> \\/etc\\/crontab; crontab /etc/crontab"
+    Properties:
+      ImageId:
+        !GetAtt AMIInfo.Id
+      InstanceType:
+        Ref: HIDSInstanceSize
+      IamInstanceProfile:
+        Ref: HIDSInstanceProfile
+      NetworkInterfaces:
+        - AssociatePublicIpAddress:
+            !If [AssignPubIp, true, false]
+          DeviceIndex: "0"
+          GroupSet:
+            - Ref: HIDSSecurityGroup
+          SubnetId:
+            Ref: SubnetId
+      Tags:
+      - Key: Name
+        Value: hids-linux-test-host02
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -xe
+          yum update -y
+          yum install -yq gcc make awslogs httpd telnet pcre2-devel zlib-devel openssl-devel libevent-devel systemd-devel.x86_64
+          /usr/bin/aws configure set region ${AWS::Region}
+          /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource HIDSLinuxHost02 --configsets HIDS_Install --region ${AWS::Region}
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource HIDSLinuxHost02 --region ${AWS::Region}
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT10M
+  HIDSAlerts:
+    Type: "AWS::Logs::LogGroup"
+    Properties:
+      LogGroupName: !Join [ "", ["hids-alerts-", !Ref "AWS::Region"]]
+      RetentionInDays: 7
+  HIDSOpenSearchDomain:
+        Type: "AWS::OpenSearchService::Domain"
+        Properties:
+          DomainName: !Join [ "", ["hids-alerts-", !Ref "AWS::Region"] ]
+          ClusterConfig:
+            DedicatedMasterEnabled: false
+            InstanceCount: '1'
+            InstanceType:
+              Ref: OpenSearchInstanceSize
+          DomainEndpointOptions: 
+            EnforceHTTPS: true
+          EBSOptions:
+            EBSEnabled: true
+            Iops: 0
+            VolumeSize: 10
+            VolumeType: "gp2"
+          SoftwareUpdateOptions:
+            AutoSoftwareUpdateEnabled: true
+          AccessPolicies:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Principal:
+                  AWS: "*"
+                Action: "es:ESHttp*"
+                Effect: "Allow"
+                Resource: 
+                  !Sub "arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/hids-alerts-${AWS::Region}/*"
+                Condition:
+                  IpAddress:
+                    aws:SourceIp:
+                      - Ref: MyTrustedNetwork
+          AdvancedOptions:
+            rest.action.multi.allow_explicit_index: true
+            override_main_response_version: true
+          Tags:
+          - Key: Name
+            Value: hids-opensearch-domain
+  HIDSLambdaConsumer:
+        Type: AWS::Lambda::Function
+        Properties:
+            Description: "HIDS Alerts CloudWatch Logs to Amazon OpenSearch streaming"
+            Handler : "index.handler"
+            MemorySize: 128
+            Timeout: 300
+            Role:
+              Fn::GetAtt:
+                - "HIDSLambdaRole"
+                - "Arn"
+            Runtime : "nodejs18.x"
+            Environment:
+              Variables:
+                ES_ENDPOINT: 
+                  !GetAtt HIDSOpenSearchDomain.DomainEndpoint
+            Code:
+              ZipFile: !Sub |
+                /*
+                * Copyright 2017 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+                *
+                * SPDX-License-Identifier: Apache-2.0
+                */
+
+                // v1.1.3
+
+                var https = require('https');
+                var zlib = require('zlib');
+                var crypto = require('crypto');
+
+                var endpoint = process.env.ES_ENDPOINT;
+
+                exports.handler = function(input, context) {
+                    // decode input from base64
+                    var zippedInput = new Buffer.from(input.awslogs.data, 'base64');
+
+                    // decompress the input
+                    zlib.gunzip(zippedInput, function(error, buffer) {
+                        if (error) { context.fail(error); return; }
+
+                        // parse the input from JSON
+                        var awslogsData = JSON.parse(buffer.toString('utf8'));
+
+                        // transform the input to OpenSearch documents
+                        var OpenSearchBulkData = transform(awslogsData);
+
+                        // skip control messages
+                        if (!OpenSearchBulkData) {
+                            console.log('Received a control message');
+                            context.succeed('Control message handled successfully');
+                            return;
+                        }
+
+                        // post documents to the Amazon OpenSearch Service
+                        post(OpenSearchBulkData, function(error, success, statusCode, failedItems) {
+                            console.log('Response: ' + JSON.stringify({
+                                "statusCode": statusCode
+                            }));
+
+                            if (error) {
+                                console.log('Error: ' + JSON.stringify(error, null, 2));
+
+                                if (failedItems && failedItems.length > 0) {
+                                    console.log("Failed Items: " +
+                                        JSON.stringify(failedItems, null, 2));
+                                }
+
+                                context.fail(JSON.stringify(error));
+                            } else {
+                                console.log('Success: ' + JSON.stringify(success));
+                                context.succeed('Success');
+                            }
+                        });
+                    });
+                };
+
+                function transform(payload) {
+                    if (payload.messageType === 'CONTROL_MESSAGE') {
+                        return null;
+                    }
+
+                    var bulkRequestBody = '';
+
+                    payload.logEvents.forEach(function(logEvent) {
+                        var timestamp = new Date(1 * logEvent.timestamp);
+
+                        // index name format: cwl-YYYY.MM.DD
+                        var indexName = [
+                            'cwl-' + timestamp.getUTCFullYear(),              // year
+                            ('0' + (timestamp.getUTCMonth() + 1)).slice(-2),  // month
+                            ('0' + timestamp.getUTCDate()).slice(-2)          // day
+                        ].join('.');
+
+                        var source = buildSource(logEvent.message, logEvent.extractedFields);
+                        source['@id'] = logEvent.id;
+                        source['@timestamp'] = new Date(1 * logEvent.timestamp).toISOString();
+                        source['@message'] = logEvent.message;
+                        source['@owner'] = payload.owner;
+                        source['@log_group'] = payload.logGroup;
+                        source['@log_stream'] = payload.logStream;
+
+                        var action = { "index": {} };
+                        action.index._index = indexName;
+                        // action.index._type = payload.logGroup; // deprecated
+                        action.index._id = logEvent.id;
+
+                        bulkRequestBody += [
+                            JSON.stringify(action),
+                            JSON.stringify(source),
+                        ].join('\n') + '\n';
+                    });
+                    return bulkRequestBody;
+                }
+
+                function buildSource(message, extractedFields) {
+                    if (extractedFields) {
+                        var source = {};
+
+                        for (var key in extractedFields) {
+                            if (extractedFields.hasOwnProperty(key) && extractedFields[key]) {
+                                var value = extractedFields[key];
+
+                                if (isNumeric(value)) {
+                                    source[key] = 1 * value;
+                                    continue;
+                                }
+
+                                var jsonSubString = extractJson(value);
+                                if (jsonSubString !== null) {
+                                    source['$' + key] = JSON.parse(jsonSubString);
+                                }
+
+                                source[key] = value;
+                            }
+                        }
+                        return source;
+                    }
+
+                    jsonSubString = extractJson(message);
+                    if (jsonSubString !== null) {
+                        return JSON.parse(jsonSubString);
+                    }
+
+                    return {};
+                }
+
+                function extractJson(message) {
+                    var jsonStart = message.indexOf('{');
+                    if (jsonStart < 0) return null;
+                    var jsonSubString = message.substring(jsonStart);
+                    return isValidJson(jsonSubString) ? jsonSubString : null;
+                }
+
+                function isValidJson(message) {
+                    try {
+                        JSON.parse(message);
+                    } catch (e) { return false; }
+                    return true;
+                }
+
+                function isNumeric(n) {
+                    return !isNaN(parseFloat(n)) && isFinite(n);
+                }
+
+                function post(body, callback) {
+                    var requestParams = buildRequest(endpoint, body);
+
+                    var request = https.request(requestParams, function(response) {
+                        var responseBody = '';
+                        response.on('data', function(chunk) {
+                            responseBody += chunk;
+                        });
+                        response.on('end', function() {
+                            var info = JSON.parse(responseBody);
+                            var failedItems;
+                            var success;
+
+                            if (response.statusCode >= 200 && response.statusCode < 299) {
+                                failedItems = info.items.filter(function(x) {
+                                    return x.index.status >= 300;
+                                });
+
+                                success = {
+                                    "attemptedItems": info.items.length,
+                                    "successfulItems": info.items.length - failedItems.length,
+                                    "failedItems": failedItems.length
+                                };
+                            }
+
+                            var error = response.statusCode !== 200 || info.errors === true ? {
+                                "statusCode": response.statusCode,
+                                "responseBody": responseBody
+                            } : null;
+
+                            callback(error, success, response.statusCode, failedItems);
+                        });
+                    }).on('error', function(e) {
+                        callback(e);
+                    });
+                    request.end(requestParams.body);
+                }
+
+                function buildRequest(endpoint, body) {
+                    var endpointParts = endpoint.match(/^([^\.]+)\.?([^\.]*)\.?([^\.]*)\.amazonaws\.com$/);
+                    var region = endpointParts[2];
+                    var service = endpointParts[3];
+                    var datetime = (new Date()).toISOString().replace(/[:\-]|\.\d{3}/g, '');
+                    var date = datetime.substr(0, 8);
+                    var kDate = hmac('AWS4' + process.env.AWS_SECRET_ACCESS_KEY, date);
+                    var kRegion = hmac(kDate, region);
+                    var kService = hmac(kRegion, service);
+                    var kSigning = hmac(kService, 'aws4_request');
+
+                    var request = {
+                        host: endpoint,
+                        method: 'POST',
+                        path: '/_bulk',
+                        body: body,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Host': endpoint,
+                            'Content-Length': Buffer.byteLength(body),
+                            'X-Amz-Security-Token': process.env.AWS_SESSION_TOKEN,
+                            'X-Amz-Date': datetime
+                        }
+                    };
+
+                    var canonicalHeaders = Object.keys(request.headers)
+                        .sort(function(a, b) { return a.toLowerCase() < b.toLowerCase() ? -1 : 1; })
+                        .map(function(k) { return k.toLowerCase() + ':' + request.headers[k]; })
+                        .join('\n');
+
+                    var signedHeaders = Object.keys(request.headers)
+                        .map(function(k) { return k.toLowerCase(); })
+                        .sort()
+                        .join(';');
+
+                    var canonicalString = [
+                        request.method,
+                        request.path, '',
+                        canonicalHeaders, '',
+                        signedHeaders,
+                        hash(request.body, 'hex'),
+                    ].join('\n');
+
+                    var credentialString = [ date, region, service, 'aws4_request' ].join('/');
+
+                    var stringToSign = [
+                        'AWS4-HMAC-SHA256',
+                        datetime,
+                        credentialString,
+                        hash(canonicalString, 'hex')
+                    ] .join('\n');
+
+                    request.headers.Authorization = [
+                        'AWS4-HMAC-SHA256 Credential=' + process.env.AWS_ACCESS_KEY_ID + '/' + credentialString,
+                        'SignedHeaders=' + signedHeaders,
+                        'Signature=' + hmac(kSigning, stringToSign, 'hex')
+                    ].join(', ');
+
+                    return request;
+                }
+
+                function hmac(key, str, encoding) {
+                    return crypto.createHmac('sha256', key).update(str, 'utf8').digest(encoding);
+                }
+
+                function hash(str, encoding) {
+                    return crypto.createHash('sha256').update(str, 'utf8').digest(encoding);
+                }
+  HIDSLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: "Allow"
+            Principal:
+              Service:
+                - "lambda.amazonaws.com"
+            Action:
+              "sts:AssumeRole"
+      Path: "/"
+  HIDSLambdaPolicy:
+      Type: AWS::IAM::Policy
+      Properties:
+        PolicyName: "hids_lambda_consumer_policy"
+        PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+            -
+              Effect: "Allow"
+              Action:
+                - "logs:CreateLogGroup"
+                - "logs:CreateLogStream"
+                - "logs:PutLogEvents"
+                - "logs:GetLogEvents"
+                - "logs:DescribeLogStreams"
+              Resource: "arn:aws:logs:*:*:*"
+            -
+              Effect: "Allow"
+              Action:
+                - "es:ESHttpPost"
+              Resource: "arn:aws:es:*:*:*"
+        Roles:
+          -
+            Ref: "HIDSLambdaRole"
+  HIDSLambdaInvoke:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      FunctionName:
+        Fn::GetAtt:
+          - "HIDSLambdaConsumer"
+          - "Arn"
+      Action: "lambda:InvokeFunction"
+      Principal: !Join [ "", ["logs.", !Ref "AWS::Region", ".amazonaws.com"]]
+      SourceAccount:
+        Ref: "AWS::AccountId"
+      SourceArn:
+        Fn::GetAtt:
+          - HIDSAlerts
+          - Arn
+  HIDSFilter:
+    DependsOn: HIDSLambdaInvoke
+    Type: AWS::Logs::SubscriptionFilter
+    Properties:
+      LogGroupName:
+        !Join [ "", ["hids-alerts-", !Ref "AWS::Region"]]
+      FilterPattern: ""
+      DestinationArn:
+        !GetAtt
+          HIDSLambdaConsumer.Arn
+Outputs:
+  HIDSESDashboardURL:
+    Description: OpenSearch Dashboard Endpoint.
+    Value:
+      !Join [ "", ["https://", !GetAtt "HIDSOpenSearchDomain.DomainEndpoint", "/_dashboards/"]]
+  HIDSLinuxHost01:
+    Description: First Test EC2 Instance Internal IP Address.
+    Value:
+      Fn::GetAtt:
+      - HIDSLinuxHost01
+      - PrivateIp
+  HIDSLinuxHost02:
+    Description: Second Test EC2 Instance Internal IP Address.
+    Value:
+      Fn::GetAtt:
+      - HIDSLinuxHost02
+      - PrivateIp
+  HIDSLambdaConsumer:
+    Description: HIDS Lambda Consumer Function.
+    Value:
+      Ref: HIDSLambdaConsumer
+  HIDSSecurityGroup:
+    Description: The HIDS Security Group ID.
+    Value:
+      Ref: HIDSSecurityGroup
+  Region:
+    Description: Region of the stack.
+    Value:
+      Ref: AWS::Region
