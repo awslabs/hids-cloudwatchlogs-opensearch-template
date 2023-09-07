@@ -296,7 +296,7 @@ Resources:
               env:
                 ossec_version: "3.7.0"
                 ossec_keyid: "2D8387B7"
-              command: "(if gpg --with-colons --keyid-format long OSSEC-ARCHIVE-KEY.asc |& grep -qs ${ossec_keyid}; 
+              command: "(if gpg --with-colons --keyid-format long OSSEC-ARCHIVE-KEY.asc | grep -qs ${ossec_keyid}; 
                 then mv ${ossec_version}.tar.gz ossec-hids-${ossec_version}.tar.gz;
                 else echo \"Error... missing expected keyid string.\"; fi &&
                  if gpg --with-colons --verify ossec-hids-${ossec_version}.tar.gz.asc ossec-hids-${ossec_version}.tar.gz |& grep -qs 'Good signature';
